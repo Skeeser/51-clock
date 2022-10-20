@@ -1,0 +1,821 @@
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\keil5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.l
+                    -st) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "LCD1602.h"
+   3          #include "DS1302.h"
+   4          #include "delay.h"
+   5          #include "key.h"
+   6          #include "Timer1.h"
+   7          #include "CTimer0.h"
+   8          #include "IR.h"
+   9          #include "Int0.h"
+  10          #include "DS18B20.h"
+  11          #include "OneWire.h"
+  12          #include "UART.h"
+  13          
+  14          //自动对时
+  15          unsigned char serialtime[] = {0,0,0,0,0,0};
+  16          unsigned char ACTkey;
+  17          unsigned char ACKFlag;
+  18          
+  19          //红外
+  20          idata unsigned int IR_Time;//下降沿到下一个下降沿的间隔时长
+  21          idata unsigned char IR_State;//状态位
+  22          idata unsigned char IR_Data[4];
+  23          idata unsigned char IR_pData;
+  24          idata unsigned char IR_DataFlag;//数据标志位 判断是否接收到数据
+  25          idata unsigned char IR_RepeatFlag;//重复标志位 判断是否为重复信号
+  26          idata unsigned char IR_Addr;
+  27          idata unsigned char IR_Command;
+  28          
+  29          //闹钟
+  30          idata signed char AL_Time[]={0,0,0,0,0,0};
+  31          idata unsigned char ALSet;
+  32          idata unsigned char AWSet;
+  33          idata unsigned char ANum;
+  34          
+  35          //音乐
+  36          #define SPEED 500
+  37          unsigned int code FreqTable[]={
+  38          63625,63732,63833,63929,64019,64104,64185,64260,64332,64400,64463,64524,
+  39          64580,64634,64685,64732,64778,64820,64860,64898,64934,64968,65000,65030,
+  40          65058,65085,65110,65134,65157,65178,65198,65217,65235,65252,65268,65283};
+  41          
+  42          unsigned char code Music[]={
+  43            7,2,
+  44            7,2,
+  45            9,4,
+  46            7,4,
+  47            12,4,
+  48            11,8,
+  49            7,2,
+  50            7,2,
+  51            9,4,
+  52            7,4,
+  53            14,4,
+  54            12,8,
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 2   
+
+  55            7,4,
+  56            7,4,
+  57            19,4,
+  58            16,4,
+  59            12,4,
+  60            11,4,
+  61            9,4,
+  62            17,6,
+  63            17,4,
+  64            16,4,
+  65            12,4,
+  66            14,4,
+  67            12,8
+  68          };
+  69          
+  70          unsigned char FreqSelect,MusicSelect;
+  71          
+  72          //？？？
+  73          unsigned char Bsec=10;
+  74          
+  75          //主时钟
+  76          unsigned char keynum,CLSet;//接收按键返回值，模式，时钟位选
+  77          unsigned char MOD=1;
+  78          signed char WSet;//星期位
+  79          
+  80          //温度检测
+  81          float T;
+  82          
+  83          //秒表
+  84          unsigned char WatchMode;
+  85          unsigned char micosec1=0,micosec2=0,sec=0,min=0,hour=0;
+  86          unsigned char Wcount;
+  87          unsigned char IRNum;
+  88          
+  89          //倒计时
+  90          unsigned char TimeSelect,TimeSetFlag;
+  91          unsigned char CDcount,CDmode,CDMod;
+  92          char COUNTDOWN_Time[]={0,0,0,0};
+  93          
+  94          //断电走时
+  95          unsigned char FLAG;
+  96          
+  97          //闪烁工具数
+  98          unsigned int count,TSet;
+  99          
+ 100          //循环工具数
+ 101          unsigned int ti;
+ 102          sbit bee=P2^0;
+ 103          
+ 104          //缓慢切换 试用功能
+ 105          unsigned int Slow;
+ 106          
+ 107          //红外灵敏度提高
+ 108          unsigned char Clean;
+ 109          
+ 110          //按键灵敏度提高
+ 111          unsigned char keyflag=1;
+ 112          idata unsigned char keylm;
+ 113          idata unsigned char its,jts;
+ 114          idata unsigned char ias,jas;
+ 115          idata unsigned char ics,jcs;
+ 116          
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 3   
+
+ 117          //背光控制
+ 118          unsigned char backlight;
+ 119          
+ 120          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 121          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 122          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 123          void code TimerShow()
+ 124          {   
+ 125   1          
+ 126   1          //清空调时位选
+ 127   1          DS_ReadTime();//每次进入走时模式，先读取一次时钟走时起点
+ 128   1          LCD_ShowString(1,13," ");
+ 129   1          LCD_ShowNum(1,1,DS_Time[0],2);
+ 130   1          LCD_ShowString(1,3,"-");
+ 131   1          LCD_ShowNum(1,4,DS_Time[1],2);
+ 132   1          LCD_ShowString(1,6,"-");
+ 133   1          LCD_ShowNum(1,7,DS_Time[2],2);
+ 134   1          LCD_ShowNum(2,1,DS_Time[3],2);
+ 135   1          LCD_ShowString(2,3,":");
+ 136   1          LCD_ShowNum(2,4,DS_Time[4],2);
+ 137   1          LCD_ShowString(2,6,":");
+ 138   1          LCD_ShowNum(2,7,DS_Time[5],2);
+ 139   1          LCD_ShowString(1,9," ");
+ 140   1          LCD_ShowString(2,9," ");
+ 141   1          LCD_ShowString(2,10,"   ");
+ 142   1          if(DS_Time[3]==0&&DS_Time[4]==0&&DS_Time[5]==0){delayms(600);WSet++;}//参数勿改
+ 143   1          if(WSet>6){WSet=0;}
+ 144   1          LCD_ShowString(1,10,DS_DAY[WSet]);
+ 145   1          
+ 146   1          if(keylm==2||keylm==3){keyflag=0;MOD=0;}
+ 147   1          if(ANum==0){LCD_ShowString(1,14,"OFF");}else{LCD_ShowString(1,14,"ON ");}
+ 148   1          delayms(5);
+ 149   1          if(DS_Time[4]==0&&DS_Time[5]==0)//整点报时
+ 150   1          {
+ 151   2            for(ti=0;ti<80;ti++)
+ 152   2            {
+ 153   3              bee=1;delayms(2);
+ 154   3              bee=0;delayms(2);
+ 155   3            }
+ 156   2          }
+ 157   1          
+ 158   1          //背光控制，每按一次按键四或红外，将backlight的值01不断转换
+ 159   1          if(keylm==4||IR_Command==0x45) 
+ 160   1          { 
+ 161   2          keyflag=0;
+ 162   2          if(backlight==1) backlight=0;
+ 163   2          else backlight=1;
+ 164   2          IR_Command=0;   
+ 165   2          }
+ 166   1      }
+ 167          
+ 168          
+ 169          
+ 170          void code TimerSet()  
+ 171          { 
+ 172   1        LCD_ShowString(1,9," ");//消影
+ 173   1        LCD_ShowString(1,13," ");
+ 174   1        LCD_ShowString(2,9,"   ");
+ 175   1      
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 4   
+
+ 176   1        if(IR_Command==0x43||keylm==2)
+ 177   1        {
+ 178   2          keyflag=0;
+ 179   2          CLSet++;//调时位选
+ 180   2          CLSet%=7;
+ 181   2          IR_Command=0;
+ 182   2        }   
+ 183   1        else if(IR_Command==0x40)
+ 184   1        {
+ 185   2          CLSet--;//调时位选
+ 186   2          if(CLSet==-1){CLSet=6;}
+ 187   2          IR_Command=0;
+ 188   2        }   
+ 189   1        else if(IR_Command==0x09||keylm==3)//加
+ 190   1        {
+ 191   2          keyflag=0;
+ 192   2          if(CLSet==6){WSet++;}
+ 193   2          else{DS_Time[CLSet]++;if(CLSet==2)WSet++;}//操作时间数组
+ 194   2          if((DS_Time[1]==1||DS_Time[1]==3||DS_Time[1]==5||DS_Time[1]==7||DS_Time[1]==8||DS_Time[1]==10||DS_Time[1
+             -]==12)&&DS_Time[2]>31){DS_Time[2]=1;}
+ 195   2          if((DS_Time[1]==4||DS_Time[1]==6||DS_Time[1]==9||DS_Time[1]==11)&&DS_Time[2]>30){DS_Time[2]=1;}
+ 196   2          if(DS_Time[1]>12){DS_Time[1]=1;DS_Time[0]++;}
+ 197   2          if(DS_Time[2]>28&&DS_Time[0]%4!=0&&DS_Time[1]==2){DS_Time[2]=1;}
+ 198   2          if(DS_Time[2]>29&&DS_Time[0]%4==0&&DS_Time[1]==2){DS_Time[2]=1;}
+ 199   2          if(DS_Time[3]>23){DS_Time[3]=0;}
+ 200   2          if(DS_Time[4]==60){DS_Time[4]=0;}
+ 201   2          if(DS_Time[5]==60){DS_Time[5]=0;}
+ 202   2          if(WSet>6){WSet=0;}
+ 203   2          IR_Command=0;
+ 204   2        }
+ 205   1        else if(IR_Command==0x15||keylm==4)//减
+ 206   1        {
+ 207   2          keyflag=0;
+ 208   2          if(CLSet==6){WSet--;}
+ 209   2          else{DS_Time[CLSet]--;if(CLSet==2)WSet--;}//操作时间数组
+ 210   2          if((DS_Time[1]==1||DS_Time[1]==3||DS_Time[1]==5||DS_Time[1]==7||DS_Time[1]==8||DS_Time[1]==10||DS_Time[1
+             -]==12)&&DS_Time[2]<1){DS_Time[2]=31;}
+ 211   2          if((DS_Time[1]==4||DS_Time[1]==6||DS_Time[1]==9||DS_Time[1]==11)&&DS_Time[2]<1){DS_Time[2]=30;}
+ 212   2          if(DS_Time[1]<1){DS_Time[1]=12;DS_Time[0]--;}
+ 213   2          if(DS_Time[2]<1&&DS_Time[0]%4!=0&&DS_Time[1]==2){DS_Time[2]=28;}
+ 214   2          if(DS_Time[2]<1&&DS_Time[0]%4==0&&DS_Time[1]==2){DS_Time[2]=29;}
+ 215   2          if(DS_Time[3]<0){DS_Time[3]=23;}
+ 216   2          if(DS_Time[4]==-1){DS_Time[4]=59;}
+ 217   2          if(DS_Time[5]==-1){DS_Time[5]=59;}
+ 218   2          if(WSet==-1){WSet=6;}
+ 219   2          IR_Command=0;
+ 220   2        }
+ 221   1        else{Clean=1;}
+ 222   1          //闪烁功能
+ 223   1          if(CLSet==0&&TSet==0){LCD_ShowString(1,1,"  ");}else{LCD_ShowNum(1,1,DS_Time[0],2);}
+ 224   1          
+ 225   1          if(CLSet==1&&TSet==0){LCD_ShowString(1,4,"  ");}else{LCD_ShowNum(1,4,DS_Time[1],2);}
+ 226   1          
+ 227   1          if(CLSet==2&&TSet==0){LCD_ShowString(1,7,"  ");}else{LCD_ShowNum(1,7,DS_Time[2],2);}
+ 228   1          
+ 229   1          if(CLSet==3&&TSet==0){LCD_ShowString(2,1,"  ");}else{LCD_ShowNum(2,1,DS_Time[3],2);}
+ 230   1          
+ 231   1          if(CLSet==4&&TSet==0){LCD_ShowString(2,4,"  ");}else{LCD_ShowNum(2,4,DS_Time[4],2);}
+ 232   1          
+ 233   1          if(CLSet==5&&TSet==0){LCD_ShowString(2,7,"  ");}else{LCD_ShowNum(2,7,DS_Time[5],2);}
+ 234   1          
+ 235   1          if(CLSet==6&&TSet==0){LCD_ShowString(1,10,"   ");}else{LCD_ShowString(1,10,DS_DAY[WSet]);}
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 5   
+
+ 236   1          
+ 237   1          //将延时总共分为25份，每份检测一次按键的值，从而提高按键的灵敏度
+ 238   1          if(TSet==1){for(its=1;its<=25;its++){delayms(10);keylm=keystay();}TSet=0;}
+ 239   1          else if(TSet==0){for(jts=1;jts<=25;jts++){delayms(20);keylm=keystay();}TSet=1;}
+ 240   1          LCD_ShowString(1,3,"-");LCD_ShowString(1,6,"-");LCD_ShowString(2,3,":");LCD_ShowString(2,6,":");
+ 241   1          DS_SetTime();//重新设置走时起点
+ 242   1      }
+ 243          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 244          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 245          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 246          void  AlarmRun()
+ 247          {
+ 248   1        if(DS_Time[0]==AL_Time[0]&&DS_Time[1]==AL_Time[1]&&DS_Time[2]==AL_Time[2]&&DS_Time[3]==AL_Time[3]&&DS_Tim
+             -e[4]==AL_Time[4]&&DS_Time[5]==AL_Time[5]&&ANum==1)
+ 249   1        {
+ 250   2          while(1)
+ 251   2          {
+ 252   3            for(ti=0;ti<25;ti++){bee=1;delayms(10);bee=0;delayms(5);}
+ 253   3            LCD_ShowString(1,1,"TIME IS UP      ");
+ 254   3            if(TSet==0){LCD_ShowString(2,1,"                   ");}else{LCD_ShowString(2,1,"Press pause key");}
+ 255   3            if(TSet==1){delayms(450);TSet=0;}
+ 256   3            else if(TSet==0){delayms(450);TSet=1;}
+ 257   3            if(keylm==1||IR_Command==0x44){keyflag=0;ANum=0;break;}
+ 258   3          }
+ 259   2          IR_Command=0;
+ 260   2        }
+ 261   1        
+ 262   1      }
+ 263            
+ 264          void  AlarmGet()
+ 265          {
+ 266   1        for(ti=0;ti<7;ti++)
+ 267   1        {
+ 268   2            AL_Time[ti]=DS_Time[ti];
+ 269   2        }
+ 270   1        AWSet=WSet;ALSet=4;
+ 271   1        ANum++;ANum%=2;
+ 272   1        delayms(750);
+ 273   1        MOD=1;
+ 274   1      }
+ 275          
+ 276          void  AlarmSet()//设置的函数后加一句 IR_RepeatFlag=0 
+ 277          {
+ 278   1        LCD_ShowString(1,9," ");//消影
+ 279   1        LCD_ShowString(1,13," ");
+ 280   1        LCD_ShowString(2,9,"   ");
+ 281   1        if(IR_Command==0x43||keylm==2)
+ 282   1        {
+ 283   2          keyflag=0;
+ 284   2          ALSet++;//调时位选
+ 285   2          ALSet%=6;
+ 286   2          IR_Command=0;
+ 287   2        }   
+ 288   1        else if(IR_Command==0x40)
+ 289   1        {
+ 290   2          ALSet--;//调时位选
+ 291   2          if(ALSet==-1){ALSet=5;}
+ 292   2          IR_Command=0;
+ 293   2        }   
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 6   
+
+ 294   1        else if(IR_Command==0x09||keylm==3)//加
+ 295   1        {
+ 296   2          keyflag=0;
+ 297   2          if(ALSet==6){AWSet++;}
+ 298   2          else{AL_Time[ALSet]++;if(ALSet==2)AWSet++;}//操作时间数组
+ 299   2          if((AL_Time[1]==1||AL_Time[1]==3||AL_Time[1]==5||AL_Time[1]==7||AL_Time[1]==8||AL_Time[1]==10||AL_Time[1
+             -]==12)&&AL_Time[2]>31){AL_Time[2]=1;}
+ 300   2          if((AL_Time[1]==4||AL_Time[1]==6||AL_Time[1]==9||AL_Time[1]==11)&&AL_Time[2]>30){AL_Time[2]=1;}
+ 301   2          if(AL_Time[1]>12){AL_Time[1]=1;AL_Time[0]++;}
+ 302   2          if(AL_Time[2]>28&&AL_Time[0]%4!=0&&AL_Time[1]==2){AL_Time[2]=1;}
+ 303   2          if(AL_Time[2]>29&&AL_Time[0]%4==0&&AL_Time[1]==2){AL_Time[2]=1;}
+ 304   2          if(AL_Time[3]>23){AL_Time[3]=0;}
+ 305   2          if(AL_Time[4]==60){AL_Time[4]=0;}
+ 306   2          if(AL_Time[5]==60){AL_Time[5]=0;}
+ 307   2          if(AWSet>6){AWSet=0;}
+ 308   2          IR_Command=0;
+ 309   2        }
+ 310   1        else if(IR_Command==0x15||keylm==4)//减
+ 311   1        {
+ 312   2          keyflag=0;
+ 313   2          if(ALSet==6){AWSet--;}
+ 314   2          else{AL_Time[ALSet]--;if(ALSet==2)AWSet--;}//操作时间数组
+ 315   2          if((AL_Time[1]==1||AL_Time[1]==3||AL_Time[1]==5||AL_Time[1]==7||AL_Time[1]==8||AL_Time[1]==10||AL_Time[1
+             -]==12)&&AL_Time[2]<1){AL_Time[2]=31;}
+ 316   2          if((AL_Time[1]==4||AL_Time[1]==6||AL_Time[1]==9||AL_Time[1]==11)&&AL_Time[2]<1){AL_Time[2]=30;}
+ 317   2          if(AL_Time[1]<1){AL_Time[1]=12;}
+ 318   2          if(AL_Time[2]<1&&AL_Time[0]%4!=0&&AL_Time[1]==2){AL_Time[2]=28;}
+ 319   2          if(AL_Time[2]<1&&AL_Time[0]%4==0&&AL_Time[1]==2){AL_Time[2]=29;}
+ 320   2          if(AL_Time[3]<0){AL_Time[3]=23;}
+ 321   2          if(AL_Time[4]==-1){AL_Time[4]=59;}
+ 322   2          if(AL_Time[5]==-1){AL_Time[5]=59;}
+ 323   2          if(AWSet==-1){AWSet=6;}
+ 324   2          IR_Command=0;
+ 325   2        }
+ 326   1        else{Clean=1;}
+ 327   1        
+ 328   1          if(ALSet==0&&TSet==0){LCD_ShowString(1,1,"  ");}else{LCD_ShowNum(1,1,AL_Time[0],2);}//配合定时器实
+             -现闪烁（闪烁后于调时，显示当前设置时间） 
+ 329   1          
+ 330   1          if(ALSet==1&&TSet==0){LCD_ShowString(1,4,"  ");}else{LCD_ShowNum(1,4,AL_Time[1],2);}
+ 331   1          
+ 332   1          if(ALSet==2&&TSet==0){LCD_ShowString(1,7,"  ");}else{LCD_ShowNum(1,7,AL_Time[2],2);}
+ 333   1          
+ 334   1          if(ALSet==3&&TSet==0){LCD_ShowString(2,1,"  ");}else{LCD_ShowNum(2,1,AL_Time[3],2);}
+ 335   1          
+ 336   1          if(ALSet==4&&TSet==0){LCD_ShowString(2,4,"  ");}else{LCD_ShowNum(2,4,AL_Time[4],2);}
+ 337   1          
+ 338   1          if(ALSet==5&&TSet==0){LCD_ShowString(2,7,"  ");}else{LCD_ShowNum(2,7,AL_Time[5],2);}
+ 339   1          
+ 340   1          if(ALSet==6&&TSet==0){LCD_ShowString(1,10,"   ");}else{LCD_ShowString(1,10,DS_DAY[AWSet]);}
+ 341   1          
+ 342   1          LCD_ShowString(1,3,"-");LCD_ShowString(1,6,"-");LCD_ShowString(2,3,":");LCD_ShowString(2,6,":");
+ 343   1          
+ 344   1          if(TSet==1){for(ias=1;ias<=25;ias++){delayms(10);keylm=keystay();}TSet=0;}
+ 345   1          else if(TSet==0){for(jas=1;jas<=25;jas++) {delayms(20);keylm=keystay();}TSet=1;}
+ 346   1          
+ 347   1      }
+ 348          
+ 349          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 350          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 7   
+
+ 351          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 352          
+ 353          
+ 354          void code TEMShow()
+ 355          {
+ 356   1          //显示温度字符并消影
+ 357   1          LCD_ShowString(1,1,"Temperature:     ");
+ 358   1          LCD_ShowString(2,9,"     ");
+ 359   1          DS18B20_ConvertT();
+ 360   1          T = DS18B20_ReadT();
+ 361   1          
+ 362   1          //判断温度是否为负数，若为负数，将温度变正数并加上负的字符
+ 363   1          if(T<0)
+ 364   1          {
+ 365   2            LCD_ShowChar(2,1,'-');
+ 366   2            T=-T;
+ 367   2          }
+ 368   1          else 
+ 369   1          {
+ 370   2            LCD_ShowChar(2,1,'+');
+ 371   2          }
+ 372   1          //显示温度的整数部分
+ 373   1          LCD_ShowNum(2,2,T,3);
+ 374   1          LCD_ShowChar(2,5,'.');
+ 375   1          //显示温度的小数部分，并控制精度
+ 376   1          LCD_ShowNum(2,6,(unsigned long)(T*100)%100,2);
+ 377   1          LCD_ShowChar(2,8,'C');
+ 378   1            
+ 379   1      }
+ 380          
+ 381          
+ 382          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 383          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 384          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 385          
+ 386          void code StopWatch()
+ 387            {   
+ 388   1          //秒表显示和消影
+ 389   1          delayms(1);
+ 390   1          keylm=keystay();
+ 391   1          LCD_ShowString(1,1,"StopWatch:            ");
+ 392   1          LCD_ShowString(2,3,":");
+ 393   1          LCD_ShowString(2,6,":");
+ 394   1          LCD_ShowString(2,9,":");
+ 395   1          //秒表模式一是开始计时，模式二是暂停，模式三是清除
+ 396   1          if(IR_Command==0x45||keylm==2){keyflag=0;WatchMode=1;}
+ 397   1          else if(IR_Command==0x44||keylm==3){keyflag=0;WatchMode=2;}
+ 398   1          else if(IR_Command==0x07||keylm==4){keyflag=0;WatchMode=3;}
+ 399   1          else{Clean=1;}
+ 400   1          if(WatchMode==1)
+ 401   1          { 
+ 402   2            micosec1++;
+ 403   2            if(micosec1%2){micosec2++;micosec2++;}
+ 404   2            if(micosec1>=10){micosec1=0;sec++;}
+ 405   2            if(sec>=60){sec=0;min++;}
+ 406   2            if(min>=60){min=0;hour++;}  
+ 407   2            if(hour>=24){hour=0;}
+ 408   2          }           
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 8   
+
+ 409   1          else if(WatchMode==2){WatchMode=0;}
+ 410   1          else if(WatchMode==3){micosec2=0;micosec1=0;sec=0;min=0;hour=0;TL1=0x00;TH1=0x00;}
+ 411   1          LCD_ShowNum(2,1,hour,2);
+ 412   1          LCD_ShowNum(2,4,min,2);
+ 413   1          LCD_ShowNum(2,7,sec,2);
+ 414   1          LCD_ShowNum(2,10,micosec1,1);
+ 415   1          LCD_ShowNum(2,11,micosec2,1);
+ 416   1          
+ 417   1          LCD_ShowNum(2,14,MOD,2);
+ 418   1          
+ 419   1          
+ 420   1        }
+ 421            
+ 422          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 423          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 424          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 425          
+ 426          void CDShow()//倒计时的显示
+ 427          {
+ 428   1          //倒计时显示和消影
+ 429   1          LCD_ShowString(1,1,"count down:      ");
+ 430   1          LCD_ShowString(2,3,":");
+ 431   1          LCD_ShowString(2,6,":");
+ 432   1          LCD_ShowString(2,9,"   ");
+ 433   1          delayms(900);
+ 434   1          CDcount=1;
+ 435   1          //倒计时的走时
+ 436   1          if(CDcount)
+ 437   1            {
+ 438   2              if(COUNTDOWN_Time[0]!=0||COUNTDOWN_Time[1]!=0||COUNTDOWN_Time[2]!=0)
+ 439   2              { COUNTDOWN_Time[2]-- ;
+ 440   3                if(COUNTDOWN_Time[2]<0) {COUNTDOWN_Time[2]=59;COUNTDOWN_Time[1]--;}
+ 441   3                if(COUNTDOWN_Time[1]<0) 
+ 442   3                {
+ 443   4                  if(COUNTDOWN_Time[0]!=0){COUNTDOWN_Time[1]=59;COUNTDOWN_Time[0]--;}
+ 444   4                  else if(COUNTDOWN_Time[0]==0) COUNTDOWN_Time[1]=0;
+ 445   4                }
+ 446   3                if(COUNTDOWN_Time[0]<0) COUNTDOWN_Time[0]=0;
+ 447   3              }
+ 448   2            } 
+ 449   1          CDcount=0;
+ 450   1          LCD_ShowNum(2,1,COUNTDOWN_Time[0],2);
+ 451   1          LCD_ShowNum(2,4,COUNTDOWN_Time[1],2);
+ 452   1          LCD_ShowNum(2,7,COUNTDOWN_Time[2],2);
+ 453   1          if(COUNTDOWN_Time[0]==0&&COUNTDOWN_Time[1]==0&&COUNTDOWN_Time[2]==0)
+ 454   1          {
+ 455   2            for(ti=0;ti<30;ti++)
+ 456   2            {
+ 457   3              bee=1;delayms(2);//倒计时时间到了，蜂鸣器发出响声
+ 458   3              bee=0;delayms(2);
+ 459   3            }
+ 460   2            TimeSelect=0;
+ 461   2          }
+ 462   1          LCD_ShowString(2,9,"   ");
+ 463   1      }
+ 464          
+ 465          void CDSet()//倒计时的设置
+ 466          {
+ 467   1        //显示与消影
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 9   
+
+ 468   1        LCD_ShowString(1,1,"count down:      ");
+ 469   1        LCD_ShowString(2,3,":");
+ 470   1        LCD_ShowString(2,6,":");
+ 471   1        LCD_ShowString(2,9,"   ");
+ 472   1        if(TimeSelect==0&&TimeSetFlag==1){LCD_ShowString(2,1,"  ");}
+ 473   1        else{LCD_ShowNum(2,1,COUNTDOWN_Time[0],2);}
+ 474   1        if(TimeSelect==1&&TimeSetFlag==1){LCD_ShowString(2,4,"  ");}
+ 475   1        else{LCD_ShowNum(2,4,COUNTDOWN_Time[1],2);}
+ 476   1        if(TimeSelect==2&&TimeSetFlag==1){LCD_ShowString(2,7,"  ");}
+ 477   1        else{LCD_ShowNum(2,7,COUNTDOWN_Time[2],2);}
+ 478   1        
+ 479   1        //按键2是位选，选择设置倒计时的位
+ 480   1        //COUNTDOWN_Times数组有四个元素，当按2进入COUNTDOWN_Times[3]时，自动进行倒计时
+ 481   1        if(keylm==2||IR_Command==0x43)
+ 482   1        {
+ 483   2          keyflag=0;
+ 484   2          TimeSelect++;
+ 485   2          TimeSelect%=4;
+ 486   2          IR_Command=0;
+ 487   2        }
+ 488   1        //按键3和4进行加减设置
+ 489   1        else if(keylm==3||IR_Command==0x09)
+ 490   1        {
+ 491   2          keyflag=0;
+ 492   2          COUNTDOWN_Time[TimeSelect]++;
+ 493   2          if(COUNTDOWN_Time[0]>23){COUNTDOWN_Time[0]=0;}
+ 494   2          if(COUNTDOWN_Time[1]>59){COUNTDOWN_Time[1]=0;}
+ 495   2          if(COUNTDOWN_Time[2]>59){COUNTDOWN_Time[2]=0;}
+ 496   2          IR_Command=0;
+ 497   2        } 
+ 498   1        
+ 499   1        else if(keylm==4||IR_Command==0x15)
+ 500   1        {
+ 501   2          keyflag=0;
+ 502   2          COUNTDOWN_Time[TimeSelect]--; 
+ 503   2          if(COUNTDOWN_Time[0]<0){COUNTDOWN_Time[0]=23;}
+ 504   2          if(COUNTDOWN_Time[1]<0){COUNTDOWN_Time[1]=59;}
+ 505   2          if(COUNTDOWN_Time[2]<0){COUNTDOWN_Time[2]=59;}
+ 506   2          IR_Command=0;
+ 507   2        } 
+ 508   1        else{Clean=1;}
+ 509   1          //闪烁，同时进行了按键灵敏度提高
+ 510   1          if(TimeSetFlag==1){for(ics=1;ics<=25;ics++){delayms(10);keylm=keystay();}TimeSetFlag=0;}
+ 511   1          else if(TimeSetFlag==0){for(jcs=1;jcs<=25;jcs++){delayms(15);keylm=keystay();}TimeSetFlag=1;}
+ 512   1          
+ 513   1        
+ 514   1        
+ 515   1      }
+ 516          
+ 517          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 518          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 519          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 520          void code ACT()
+ 521          {
+ 522   1          
+ 523   1          LCD_ShowString(2,3,":");
+ 524   1          LCD_ShowString(2,6,":");
+ 525   1          //分别显示串口时间数组的值
+ 526   1          LCD_ShowNum(2,1,serialtime[0],1);
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 10  
+
+ 527   1          LCD_ShowNum(2,2,serialtime[1],1);
+ 528   1          LCD_ShowNum(2,4,serialtime[2],1);
+ 529   1          LCD_ShowNum(2,5,serialtime[3],1);
+ 530   1          LCD_ShowNum(2,7,serialtime[4],1);
+ 531   1          LCD_ShowNum(2,8,serialtime[5],1);
+ 532   1          
+ 533   1          ACTkey = keystay();//获取键码
+ 534   1          LCD_ShowString(1,1,"AutoCorrect YorN");
+ 535   1          //按键2的作用是校正串口传来时间数据的位置
+ 536   1          if(ACTkey==2||IR_Command==0x19) {keyflag=0;ACKFlag = 1; IR_Command=0;}
+ 537   1          //按键3的作用是将单片机的ds1302的时间进行修改
+ 538   1          if(ACTkey==3||IR_Command==0x0D)
+ 539   1          {
+ 540   2            keyflag=0;
+ 541   2            DS_Time[3] = serialtime[0] * 10 + serialtime[1];
+ 542   2            DS_Time[4] = serialtime[2] * 10 + serialtime[3];
+ 543   2            DS_Time[5] = serialtime[4] * 10 + serialtime[5];
+ 544   2            LCD_ShowString(2,10,"ok!");//修改成功显示ok
+ 545   2            DS_SetTime();
+ 546   2          }
+ 547   1          
+ 548   1      
+ 549   1      }
+ 550            
+ 551          
+ 552          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 553          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 554          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 555          
+ 556          void Bomb()
+ 557          {
+ 558   1          LCD_ShowString(1,1,"There is a bomb:      ");
+ 559   1          LCD_ShowString(2,1,"00:");
+ 560   1          LCD_ShowString(2,4,"00:");
+ 561   1          LCD_ShowString(2,9,"   ");
+ 562   1          while(1)
+ 563   1          {
+ 564   2            delayms(900);
+ 565   2            Bsec--;
+ 566   2            LCD_ShowNum(2,7,Bsec,2);
+ 567   2            if(Bsec==0){Bsec=10;MOD=9;break;}
+ 568   2          }
+ 569   1      }
+ 570          
+ 571          void code MusicPlay()
+ 572          {
+ 573   1            if(Music[MusicSelect]!=0xFF)  //如果不是停止标志位
+ 574   1          {
+ 575   2            FreqSelect=Music[MusicSelect];  //选择音符对应的频率
+ 576   2            MusicSelect++;
+ 577   2            delayms(SPEED/4*Music[MusicSelect]);  //选择音符对应的时值
+ 578   2            MusicSelect++;
+ 579   2            TR1=0;
+ 580   2            delayms(5);
+ 581   2            TR1=1;
+ 582   2          }
+ 583   1          else  //如果是停止标志位
+ 584   1          {
+ 585   2            while(1);
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 11  
+
+ 586   2          }
+ 587   1      
+ 588   1      }
+ 589          
+ 590          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 591          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 592          //--------------------------------------------------------------------------------------------------------
+             -----------------------------------
+ 593          
+ 594          void main()
+ 595          {
+ 596   1        LCD_Init();DS_Init();CTimer0_Init();Timer1_Init();IR_Init();Int0_Init();UART_Init();  
+ 597   1        FLAG=DS_ReadByte(0XC0);
+ 598   1        //断电走时功能，防止再次通电时ds1302被初始化
+ 599   1        if(FLAG==0)
+ 600   1        {
+ 601   2        DS_SetTime();
+ 602   2        DS_WriteByte(0xc0,1);
+ 603   2        } 
+ 604   1        while(1)
+ 605   1        {
+ 606   2            keylm=keystay();
+ 607   2            //在主函数中按键一进行模式切换
+ 608   2            if(IR_Command==0x46||keylm==1)
+ 609   2            {
+ 610   3              keyflag=0;//每次有按键按下要把keyflag清零
+ 611   3              MOD++;
+ 612   3              if(MOD>7){MOD=1;}
+ 613   3              IR_Command=0;
+ 614   3            }
+ 615   2            
+ 616   2            if(IR_Command==0x16){MOD=0;IR_Command=0;}//可以封装成函数
+ 617   2            else if(IR_Command==0x0C){MOD=1;IR_Command=0;}//但是比较懒不想改了
+ 618   2            else if(IR_Command==0x18){MOD=2;IR_Command=0;}
+ 619   2            else if(IR_Command==0x5E){MOD=3;IR_Command=0;}
+ 620   2            else if(IR_Command==0x08){MOD=4;IR_Command=0;}
+ 621   2            else if(IR_Command==0x1C){MOD=5;IR_Command=0;}
+ 622   2            else if(IR_Command==0x5A){MOD=6;IR_Command=0;}
+ 623   2            else if(IR_Command==0x42){MOD=7;IR_Command=0;}
+ 624   2            else if(IR_Command==0x52){MOD=8;IR_Command=0;}
+ 625   2            else{Clean=1;}
+ 626   2            LCD_ShowNum(2,14,MOD,2);
+ 627   2            if(MOD==9){ET1=1;}else{ET1=0;}
+ 628   2            switch(MOD)
+ 629   2            { 
+ 630   3              case 0:delayms(250);AlarmGet();break;
+ 631   3              case 1:TimerShow();AlarmRun();break;
+ 632   3              case 2:TimerSet();break;
+ 633   3              case 3:AlarmSet();break;
+ 634   3              case 4:TEMShow();break;
+ 635   3              case 5:StopWatch();break;
+ 636   3              case 6:if(TimeSelect==3){CDShow();}else{CDSet();}break; 
+ 637   3              case 7:ET1=0;ACT();break;
+ 638   3              case 8:Bomb();break;
+ 639   3              case 9:ET1=1;MusicPlay();break; 
+ 640   3            }
+ 641   2            if(Clean==0){IR_Command=0;}else{Clean=0;}//红外灵敏度提高
+ 642   2        }
+ 643   1        
+ 644   1      
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 12  
+
+ 645   1      }
+ 646          
+ 647          
+ 648          //-------------------------------------------------------------------------------------------------
+ 649          void Timer1() interrupt 3
+ 650          {
+ 651   1        if(MOD==9)
+ 652   1        {
+ 653   2          TL1 = FreqTable[FreqSelect]%256;  
+ 654   2          TH1 = FreqTable[FreqSelect]/256;
+ 655   2          count++;
+ 656   2          if(count%2)bee=~bee;
+ 657   2        }
+ 658   1        
+ 659   1      }
+ 660          //--------------------------------------------------------------------------------------------------
+ 661          void IR_Int0() interrupt 0
+ 662          {
+ 663   1        if(IR_State==0)//第一次下降沿设置定时器初值 启动定时器 并将状态置为1
+ 664   1        {
+ 665   2          CTimer0_SCounter(0);
+ 666   2          CTimer0_R(1);
+ 667   2          IR_State=1;
+ 668   2        }
+ 669   1        else if(IR_State==1)//状态为1时 判断信号的类型 
+ 670   1        {
+ 671   2          IR_Time=CTimer0_GCounter();
+ 672   2          CTimer0_SCounter(0);
+ 673   2          if(IR_Time>13500-500&&IR_Time<13500+500)//若是start信号 进入状态2
+ 674   2          {
+ 675   3            
+ 676   3            IR_State=2;
+ 677   3          }
+ 678   2          else if(IR_Time>11250-500&&IR_Time<11250+500)//若是重复信号 回到状态0
+ 679   2          {
+ 680   3            IR_RepeatFlag=1;
+ 681   3            IR_State=0;
+ 682   3          }
+ 683   2        }
+ 684   1        else if(IR_State==2)//switch语句更直观
+ 685   1        {
+ 686   2          IR_Time=CTimer0_GCounter();
+ 687   2          CTimer0_SCounter(0);
+ 688   2          if(IR_Time>1120-500&&IR_Time<1120+500)//每次进入中断状态2 判断为0或为1
+ 689   2          {
+ 690   3            IR_Data[IR_pData/8]&=~(0x01<<(IR_pData%8));//数组的顺序符合信号的顺序 即地址 地址反�
+             -� 指令 指令反码                     
+ 691   3            IR_pData++;                            
+ 692   3          }
+ 693   2          else if(IR_Time>2250-500&&IR_Time<2250+500)
+ 694   2          {
+ 695   3            IR_Data[IR_pData/8]|=(0x01<<(IR_pData%8));
+ 696   3            IR_pData++;   
+ 697   3          }
+ 698   2          else
+ 699   2          {
+ 700   3              IR_pData=0;
+ 701   3              IR_State=1;
+ 702   3          }
+ 703   2          if(IR_pData>=32)//说明已经完成三十二位解码 清空标志位 并检验
+ 704   2          {
+ 705   3              IR_pData=0;
+C51 COMPILER V9.54   MAIN                                                                  11/20/2021 21:37:36 PAGE 13  
+
+ 706   3              if(IR_Data[0]==~IR_Data[1]&&IR_Data[2]==~IR_Data[3])//通过原码和反码判断数据是否有误
+ 707   3              {
+ 708   4                IR_Addr=IR_Data[0];//获取地址
+ 709   4                IR_Command=IR_Data[2];//获取指令
+ 710   4                IR_DataFlag=1;
+ 711   4              }
+ 712   3              CTimer0_R(0);
+ 713   3              IR_State=0;
+ 714   3          }
+ 715   2        }
+ 716   1        if(MOD==9)
+ 717   1        {
+ 718   2          if(FreqTable[FreqSelect]) //如果不是休止符
+ 719   2          {
+ 720   3          TL1 = FreqTable[FreqSelect]%256;    //设置定时初值
+ 721   3          TH1 = FreqTable[FreqSelect]/256;    //设置定时初值
+ 722   3          bee=~bee;//翻转蜂鸣器IO口
+ 723   3          }
+ 724   2        }
+ 725   1      }
+ 726          
+ 727          void UART_Routine() interrupt 4
+ 728          {
+ 729   1      static unsigned int i = 0;
+ 730   1        if(RI==1)     
+ 731   1        {
+ 732   2        serialtime[i] = SBUF;//将串口的SBUF存入串口时间数组中
+ 733   2        i++;
+ 734   2        if(i==6) i=0;
+ 735   2        ACTkey=keystay();
+ 736   2        //校正时间的位置
+ 737   2        if(ACTkey==2||IR_Command==0x19||ACKFlag == 1) {i=0;keyflag=0; ACKFlag = 0;IR_Command=0;}
+ 738   2          RI=0; 
+ 739   2        }
+ 740   1      }
+ 741          
+ 742          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   5142    ----
+   CONSTANT SIZE    =    309    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     50    ----
+   IDATA SIZE       =     28    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

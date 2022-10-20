@@ -1,0 +1,37 @@
+C51 COMPILER V9.54   BEE                                                                   11/08/2021 21:59:59 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE BEE
+OBJECT MODULE PLACED IN .\Objects\bee.obj
+COMPILER INVOKED BY: D:\keil 5\C51\BIN\C51.EXE bee.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\bee.ls
+                    -t) TABS(2) OBJECT(.\Objects\bee.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          
+   3          unsigned int code freqtable[]={
+   4          63625,63732,63833,63929,64019,64104,64185,64260,64332,64400,64463,64524,
+   5          64580,64634,64685,64732,64778,64820,64860,64898,64934,64968,65000,65030,
+   6          65058,65085,65110,65134,65157,65178,65198,65217,65235,65252,65268,65283
+   7          
+   8          
+   9          };
+  10          
+  11          unsigned char code Fmusic[]={0};
+  12          
+  13          unsigned char code Tmusic[]={0};
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =     74    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
